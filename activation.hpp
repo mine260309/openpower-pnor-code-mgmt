@@ -227,16 +227,6 @@ class Activation : public ActivationInherit
     RequestedActivations
         requestedActivation(RequestedActivations value) override;
 
-    /** @brief Check if systemd state change is relevant to this object
-     *
-     * Instance specific interface to handle the detected systemd state
-     * change
-     *
-     * @param[in]  msg       - Data associated with subscribed signal
-     *
-     */
-    void unitStateChange(sdbusplus::message::message& msg);
-
     /**
      * @brief subscribe to the systemd signals
      *
@@ -289,7 +279,17 @@ class Activation : public ActivationInherit
      */
     using ActivationInherit::activation;
 
-  private:
+  protected:
+    /** @brief Check if systemd state change is relevant to this object
+     *
+     * Instance specific interface to handle the detected systemd state
+     * change
+     *
+     * @param[in]  msg       - Data associated with subscribed signal
+     *
+     */
+    virtual void unitStateChange(sdbusplus::message::message& msg) = 0;
+
     /**
      * @brief Deletes the version from Image Manager and the
      *        untar image from image upload dir.
@@ -297,7 +297,7 @@ class Activation : public ActivationInherit
     void deleteImageManagerObject();
 
     /** @brief Member function for clarity & brevity at activation start */
-    void startActivation();
+    virtual void startActivation() = 0;
 
     /** @brief Member function for clarity & brevity at activation end */
     void finishActivation();

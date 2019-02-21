@@ -78,34 +78,6 @@ void Activation::unsubscribeFromSystemdSignals()
     return;
 }
 
-void Activation::startActivation()
-{
-    // Since the squashfs image has not yet been loaded to pnor and the
-    // RW volumes have not yet been created, we need to start the
-    // service files for each of those actions.
-
-    if (!activationProgress)
-    {
-        activationProgress = std::make_unique<ActivationProgress>(bus, path);
-    }
-
-    if (!activationBlocksTransition)
-    {
-        activationBlocksTransition =
-            std::make_unique<ActivationBlocksTransition>(bus, path);
-    }
-
-    constexpr auto ubimountService = "obmc-flash-bios-ubimount@";
-    auto ubimountServiceFile =
-        std::string(ubimountService) + versionId + ".service";
-    auto method = bus.new_method_call(SYSTEMD_BUSNAME, SYSTEMD_PATH,
-                                      SYSTEMD_INTERFACE, "StartUnit");
-    method.append(ubimountServiceFile, "replace");
-    bus.call_noreply(method);
-
-    activationProgress->progress(10);
-}
-
 void Activation::finishActivation()
 {
     activationProgress->progress(90);
@@ -160,7 +132,7 @@ auto Activation::activation(Activations value) -> Activations
                     softwareServer::Activation::Activations::Failed);
             }
 #endif
-            Activation::startActivation();
+            startActivation();
             return softwareServer::Activation::activation(value);
         }
         else if (ubiVolumesCreated == true)
@@ -296,40 +268,6 @@ uint8_t RedundancyPriority::priority(uint8_t value)
     parent.parent.freePriority(value, parent.versionId);
     storeToFile(parent.versionId, value);
     return softwareServer::RedundancyPriority::priority(value);
-}
-
-void Activation::unitStateChange(sdbusplus::message::message& msg)
-{
-    uint32_t newStateID{};
-    sdbusplus::message::object_path newStateObjPath;
-    std::string newStateUnit{};
-    std::string newStateResult{};
-
-    // Read the msg and populate each variable
-    msg.read(newStateID, newStateObjPath, newStateUnit, newStateResult);
-
-    auto ubimountServiceFile =
-        "obmc-flash-bios-ubimount@" + versionId + ".service";
-
-    if (newStateUnit == ubimountServiceFile && newStateResult == "done")
-    {
-        ubiVolumesCreated = true;
-        activationProgress->progress(activationProgress->progress() + 50);
-    }
-
-    if (ubiVolumesCreated)
-    {
-        Activation::activation(
-            softwareServer::Activation::Activations::Activating);
-    }
-
-    if ((newStateUnit == ubimountServiceFile) &&
-        (newStateResult == "failed" || newStateResult == "dependency"))
-    {
-        Activation::activation(softwareServer::Activation::Activations::Failed);
-    }
-
-    return;
 }
 
 #ifdef WANT_SIGNATURE_VERIFY

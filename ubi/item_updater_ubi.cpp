@@ -1,8 +1,8 @@
 #include "config.h"
 
 #include "ubi/item_updater_ubi.hpp"
+#include "ubi/activation_ubi.hpp"
 
-#include "activation.hpp"
 #include "serialize.hpp"
 #include "version.hpp"
 #include "xyz/openbmc_project/Common/error.hpp"
@@ -127,7 +127,7 @@ void ItemUpdaterUbi::createActivation(sdbusplus::message::message& m)
                 ->second;
 
         activations.insert(std::make_pair(
-            versionId, std::make_unique<Activation>(
+            versionId, std::make_unique<ActivationUbi>(
                            bus, path, *this, versionId, extendedVersion,
                            activationState, associations)));
 
@@ -202,7 +202,7 @@ void ItemUpdaterUbi::processPNORImage()
 
             // Create Activation instance for this version.
             activations.insert(
-                std::make_pair(id, std::make_unique<Activation>(
+                std::make_pair(id, std::make_unique<ActivationUbi>(
                                        bus, path, *this, id, extendedVersion,
                                        activationState, associations)));
 
