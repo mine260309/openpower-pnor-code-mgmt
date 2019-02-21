@@ -12,7 +12,45 @@
 #include <phosphor-logging/log.hpp>
 #include <queue>
 #include <string>
+#include <sstream>
 #include <xyz/openbmc_project/Software/Version/server.hpp>
+
+namespace utils
+{
+
+template<typename... Ts>
+std::string concat_string(Ts const&... ts){
+    std::stringstream s;
+    ((s << ts << " "), ...) << std::endl;
+    return s.str();
+}
+
+// Helper function to run pflash command
+template<typename... Ts>
+std::string pflash(Ts const&... ts)
+{
+    std::array<char, 512> buffer;
+    std::string cmd = concat_string("pflash", ts ...);
+    std::stringstream result;
+    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd.c_str(), "r"), pclose);
+    if (!pipe) {
+        throw std::runtime_error("popen() failed!");
+    }
+    while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
+        result << buffer.data();
+    }
+    return result.str();
+}
+
+std::string getPNORVersion()
+{
+    // Read the VERSION partition skipping the first 4K
+    auto r = pflash("-P", "VERSION", "-r", "/dev/stderr", "--skip=4096",
+                    "2>&1 > /dev/null");
+    return r;
+}
+
+}
 
 namespace openpower
 {
@@ -27,8 +65,6 @@ namespace fs = std::experimental::filesystem;
 
 using namespace sdbusplus::xyz::openbmc_project::Common::Error;
 using namespace phosphor::logging;
-
-//constexpr auto squashFSImage = "pnor.xz.squashfs";
 
 // TODO: Change paths once openbmc/openbmc#1663 is completed.
 constexpr auto MBOXD_INTERFACE = "org.openbmc.mboxd";
@@ -144,115 +180,69 @@ void ItemUpdaterStatic::createActivation(sdbusplus::message::message& m)
 
 void ItemUpdaterStatic::processPNORImage()
 {
-    // TODO
-#if 0
-    // Read pnor.toc from folders under /media/
-    // to get Active Software Versions.
-    for (const auto& iter : fs::directory_iterator(MEDIA_DIR))
+    // TODO: use pflash to extract PNOR version and calcuate version id
+    auto fullVersion = utils::getPNORVersion();
+
+    const auto& [version, extendedVersion] = Version::getVersions(fullVersion);
+    auto id = Version::getId(version);
+
+    auto activationState = server::Activation::Activations::Active;
+    if (version.empty())
     {
-        auto activationState = server::Activation::Activations::Active;
-
-        static const auto PNOR_RO_PREFIX_LEN = strlen(PNOR_RO_PREFIX);
-        static const auto PNOR_RW_PREFIX_LEN = strlen(PNOR_RW_PREFIX);
-
-        // Check if the PNOR_RO_PREFIX is the prefix of the iter.path
-        if (0 ==
-            iter.path().native().compare(0, PNOR_RO_PREFIX_LEN, PNOR_RO_PREFIX))
-        {
-            // The versionId is extracted from the path
-            // for example /media/pnor-ro-2a1022fe.
-            auto id = iter.path().native().substr(PNOR_RO_PREFIX_LEN);
-            auto pnorTOC = iter.path() / PNOR_TOC_FILE;
-            if (!fs::is_regular_file(pnorTOC))
-            {
-                log<level::ERR>("Failed to read pnorTOC.",
-                                entry("FILENAME=%s", pnorTOC.c_str()));
-                ItemUpdaterStatic::erase(id);
-                continue;
-            }
-            auto keyValues = Version::getValue(
-                pnorTOC, {{"version", ""}, {"extended_version", ""}});
-            auto& version = keyValues.at("version");
-            if (version.empty())
-            {
-                log<level::ERR>("Failed to read version from pnorTOC",
-                                entry("FILENAME=%s", pnorTOC.c_str()));
-                activationState = server::Activation::Activations::Invalid;
-            }
-
-            auto& extendedVersion = keyValues.at("extended_version");
-            if (extendedVersion.empty())
-            {
-                log<level::ERR>("Failed to read extendedVersion from pnorTOC",
-                                entry("FILENAME=%s", pnorTOC.c_str()));
-                activationState = server::Activation::Activations::Invalid;
-            }
-
-            auto purpose = server::Version::VersionPurpose::Host;
-            auto path = fs::path(SOFTWARE_OBJPATH) / id;
-            AssociationList associations = {};
-
-            if (activationState == server::Activation::Activations::Active)
-            {
-                // Create an association to the host inventory item
-                associations.emplace_back(std::make_tuple(
-                    ACTIVATION_FWD_ASSOCIATION, ACTIVATION_REV_ASSOCIATION,
-                    HOST_INVENTORY_PATH));
-
-                // Create an active association since this image is active
-                createActiveAssociation(path);
-            }
-
-            // Create Activation instance for this version.
-            activations.insert(
-                std::make_pair(id, std::make_unique<ActivationUbi>(
-                                       bus, path, *this, id, extendedVersion,
-                                       activationState, associations)));
-
-            // If Active, create RedundancyPriority instance for this version.
-            if (activationState == server::Activation::Activations::Active)
-            {
-                uint8_t priority = std::numeric_limits<uint8_t>::max();
-                if (!restoreFromFile(id, priority))
-                {
-                    log<level::ERR>("Unable to restore priority from file.",
-                                    entry("VERSIONID=%s", id.c_str()));
-                }
-                activations.find(id)->second->redundancyPriority =
-                    std::make_unique<RedundancyPriority>(
-                        bus, path, *(activations.find(id)->second), priority);
-            }
-
-            // Create Version instance for this version.
-            auto versionPtr = std::make_unique<Version>(
-                bus, path, *this, id, version, purpose, "",
-                std::bind(&ItemUpdaterStatic::erase, this, std::placeholders::_1));
-            versionPtr->deleteObject =
-                std::make_unique<Delete>(bus, path, *versionPtr);
-            versions.insert(std::make_pair(id, std::move(versionPtr)));
-        }
-        else if (0 == iter.path().native().compare(0, PNOR_RW_PREFIX_LEN,
-                                                   PNOR_RW_PREFIX))
-        {
-            auto id = iter.path().native().substr(PNOR_RW_PREFIX_LEN);
-            auto roDir = PNOR_RO_PREFIX + id;
-            if (!fs::is_directory(roDir))
-            {
-                log<level::ERR>("No corresponding read-only volume found.",
-                                entry("DIRNAME=%s", roDir.c_str()));
-                ItemUpdaterStatic::erase(id);
-            }
-        }
+        log<level::ERR>("Failed to read version",
+                        entry("VERSION=%s", fullVersion.c_str()));
+        activationState = server::Activation::Activations::Invalid;
     }
 
-    // Look at the RO symlink to determine if there is a functional image
-    auto id = determineId(PNOR_RO_ACTIVE_PATH);
+    if (extendedVersion.empty())
+    {
+        log<level::ERR>("Failed to read extendedVersion",
+                        entry("VERSION=%s", fullVersion.c_str()));
+        activationState = server::Activation::Activations::Invalid;
+    }
+
+    auto purpose = server::Version::VersionPurpose::Host;
+    auto path = fs::path(SOFTWARE_OBJPATH) / id;
+    AssociationList associations = {};
+
+    if (activationState == server::Activation::Activations::Active)
+    {
+        // Create an association to the host inventory item
+        associations.emplace_back(std::make_tuple(
+            ACTIVATION_FWD_ASSOCIATION, ACTIVATION_REV_ASSOCIATION,
+            HOST_INVENTORY_PATH));
+
+        // Create an active association since this image is active
+        createActiveAssociation(path);
+    }
+
+    // Create Activation instance for this version.
+//    activations.insert(
+//        std::make_pair(id, std::make_unique<ActivationStatic>(
+//                               bus, path, *this, id, extendedVersion,
+//                               activationState, associations)));
+
+    // If Active, create RedundancyPriority instance for this version.
+//    if (activationState == server::Activation::Activations::Active)
+//    {
+//        // For now only one PNOR is supported with static layout
+//        activations.find(id)->second->redundancyPriority =
+//            std::make_unique<RedundancyPriority>(
+//                bus, path, *(activations.find(id)->second), 0);
+//    }
+
+    // Create Version instance for this version.
+    auto versionPtr = std::make_unique<Version>(
+        bus, path, *this, id, version, purpose, "",
+        std::bind(&ItemUpdaterStatic::erase, this, std::placeholders::_1));
+    versionPtr->deleteObject =
+        std::make_unique<Delete>(bus, path, *versionPtr);
+    versions.insert(std::make_pair(id, std::move(versionPtr)));
+
     if (!id.empty())
     {
         updateFunctionalAssociation(std::string{SOFTWARE_OBJPATH} + '/' + id);
     }
-    return;
-#endif
 }
 
 void ItemUpdaterStatic::reset()
