@@ -2,6 +2,8 @@
 
 #ifdef UBIFS_LAYOUT
 #include "ubi/item_updater_ubi.hpp"
+#else
+#include "static/item_updater_static.hpp"
 #endif
 #include "watch.hpp"
 
@@ -30,6 +32,8 @@ int main(int argc, char* argv[])
 
 #ifdef UBIFS_LAYOUT
     ItemUpdaterUbi updater(bus, SOFTWARE_OBJPATH);
+#else
+    ItemUpdaterStatic updater(bus, SOFTWARE_OBJPATH);
 #endif
 
     bus.request_name(BUSNAME_UPDATER);
