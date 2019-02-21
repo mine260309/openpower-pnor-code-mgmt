@@ -11,6 +11,7 @@ openpower_update_manager_SOURCES = \
 	version.cpp \
 	serialize.cpp \
 	watch.cpp \
+	item_updater.cpp \
 	item_updater_main.cpp
 
 if UBIFS_LAYOUT

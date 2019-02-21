@@ -1,6 +1,6 @@
 #include "config.h"
 
-#include "item_updater.hpp"
+#include "ubi/item_updater_ubi.hpp"
 
 #include "activation.hpp"
 #include "serialize.hpp"
@@ -35,7 +35,7 @@ constexpr auto squashFSImage = "pnor.xz.squashfs";
 constexpr auto MBOXD_INTERFACE = "org.openbmc.mboxd";
 constexpr auto MBOXD_PATH = "/org/openbmc/mboxd";
 
-void ItemUpdater::createActivation(sdbusplus::message::message& m)
+void ItemUpdaterUbi::createActivation(sdbusplus::message::message& m)
 {
     using SVersion = server::Version;
     using VersionPurpose = SVersion::VersionPurpose;
@@ -108,7 +108,7 @@ void ItemUpdater::createActivation(sdbusplus::message::message& m)
         // Determine the Activation state by processing the given image dir.
         auto activationState = server::Activation::Activations::Invalid;
         AssociationList associations = {};
-        if (ItemUpdater::validateSquashFSImage(filePath) == 0)
+        if (validateSquashFSImage(filePath) == 0)
         {
             activationState = server::Activation::Activations::Ready;
             // Create an association to the host inventory item
@@ -133,7 +133,7 @@ void ItemUpdater::createActivation(sdbusplus::message::message& m)
 
         auto versionPtr = std::make_unique<Version>(
             bus, path, *this, versionId, version, purpose, filePath,
-            std::bind(&ItemUpdater::erase, this, std::placeholders::_1));
+            std::bind(&ItemUpdaterUbi::erase, this, std::placeholders::_1));
         versionPtr->deleteObject =
             std::make_unique<Delete>(bus, path, *versionPtr);
         versions.insert(std::make_pair(versionId, std::move(versionPtr)));
@@ -141,7 +141,7 @@ void ItemUpdater::createActivation(sdbusplus::message::message& m)
     return;
 }
 
-void ItemUpdater::processPNORImage()
+void ItemUpdaterUbi::processPNORImage()
 {
     // Read pnor.toc from folders under /media/
     // to get Active Software Versions.
@@ -164,7 +164,7 @@ void ItemUpdater::processPNORImage()
             {
                 log<level::ERR>("Failed to read pnorTOC.",
                                 entry("FILENAME=%s", pnorTOC.c_str()));
-                ItemUpdater::erase(id);
+                ItemUpdaterUbi::erase(id);
                 continue;
             }
             auto keyValues = Version::getValue(
@@ -223,7 +223,7 @@ void ItemUpdater::processPNORImage()
             // Create Version instance for this version.
             auto versionPtr = std::make_unique<Version>(
                 bus, path, *this, id, version, purpose, "",
-                std::bind(&ItemUpdater::erase, this, std::placeholders::_1));
+                std::bind(&ItemUpdaterUbi::erase, this, std::placeholders::_1));
             versionPtr->deleteObject =
                 std::make_unique<Delete>(bus, path, *versionPtr);
             versions.insert(std::make_pair(id, std::move(versionPtr)));
@@ -237,7 +237,7 @@ void ItemUpdater::processPNORImage()
             {
                 log<level::ERR>("No corresponding read-only volume found.",
                                 entry("DIRNAME=%s", roDir.c_str()));
-                ItemUpdater::erase(id);
+                ItemUpdaterUbi::erase(id);
             }
         }
     }
@@ -251,7 +251,7 @@ void ItemUpdater::processPNORImage()
     return;
 }
 
-int ItemUpdater::validateSquashFSImage(const std::string& filePath)
+int ItemUpdaterUbi::validateSquashFSImage(const std::string& filePath)
 {
     auto file = fs::path(filePath) / squashFSImage;
     if (fs::is_regular_file(file))
@@ -265,7 +265,7 @@ int ItemUpdater::validateSquashFSImage(const std::string& filePath)
     }
 }
 
-void ItemUpdater::removeReadOnlyPartition(std::string versionId)
+void ItemUpdaterUbi::removeReadOnlyPartition(std::string versionId)
 {
     auto serviceFile = "obmc-flash-bios-ubiumount-ro@" + versionId + ".service";
 
@@ -276,7 +276,7 @@ void ItemUpdater::removeReadOnlyPartition(std::string versionId)
     bus.call_noreply(method);
 }
 
-void ItemUpdater::removeReadWritePartition(std::string versionId)
+void ItemUpdaterUbi::removeReadWritePartition(std::string versionId)
 {
     auto serviceFile = "obmc-flash-bios-ubiumount-rw@" + versionId + ".service";
 
@@ -287,7 +287,7 @@ void ItemUpdater::removeReadWritePartition(std::string versionId)
     bus.call_noreply(method);
 }
 
-void ItemUpdater::reset()
+void ItemUpdaterUbi::reset()
 {
     std::vector<uint8_t> mboxdArgs;
 
@@ -352,7 +352,7 @@ void ItemUpdater::reset()
     return;
 }
 
-bool ItemUpdater::isVersionFunctional(const std::string& versionId)
+bool ItemUpdaterUbi::isVersionFunctional(const std::string& versionId)
 {
     if (!fs::exists(PNOR_RO_ACTIVE_PATH))
     {
@@ -375,48 +375,7 @@ bool ItemUpdater::isVersionFunctional(const std::string& versionId)
     return true;
 }
 
-bool ItemUpdater::isChassisOn()
-{
-    auto mapperCall = bus.new_method_call(MAPPER_BUSNAME, MAPPER_PATH,
-                                          MAPPER_INTERFACE, "GetObject");
-
-    mapperCall.append(CHASSIS_STATE_PATH,
-                      std::vector<std::string>({CHASSIS_STATE_OBJ}));
-    auto mapperResponseMsg = bus.call(mapperCall);
-    if (mapperResponseMsg.is_method_error())
-    {
-        log<level::ERR>("Error in Mapper call");
-        elog<InternalFailure>();
-    }
-    using MapperResponseType = std::map<std::string, std::vector<std::string>>;
-    MapperResponseType mapperResponse;
-    mapperResponseMsg.read(mapperResponse);
-    if (mapperResponse.empty())
-    {
-        log<level::ERR>("Invalid Response from mapper");
-        elog<InternalFailure>();
-    }
-
-    auto method = bus.new_method_call((mapperResponse.begin()->first).c_str(),
-                                      CHASSIS_STATE_PATH,
-                                      SYSTEMD_PROPERTY_INTERFACE, "Get");
-    method.append(CHASSIS_STATE_OBJ, "CurrentPowerState");
-    auto response = bus.call(method);
-    if (response.is_method_error())
-    {
-        log<level::ERR>("Error in fetching current Chassis State",
-                        entry("MAPPERRESPONSE=%s",
-                              (mapperResponse.begin()->first).c_str()));
-        elog<InternalFailure>();
-    }
-    sdbusplus::message::variant<std::string> currentChassisState;
-    response.read(currentChassisState);
-    auto strParam =
-        sdbusplus::message::variant_ns::get<std::string>(currentChassisState);
-    return (strParam != CHASSIS_STATE_OFF);
-}
-
-void ItemUpdater::freePriority(uint8_t value, const std::string& versionId)
+void ItemUpdaterUbi::freePriority(uint8_t value, const std::string& versionId)
 {
     // TODO openbmc/openbmc#1896 Improve the performance of this function
     for (const auto& intf : activations)
@@ -432,7 +391,7 @@ void ItemUpdater::freePriority(uint8_t value, const std::string& versionId)
     }
 }
 
-bool ItemUpdater::isLowestPriority(uint8_t value)
+bool ItemUpdaterUbi::isLowestPriority(uint8_t value)
 {
     for (const auto& intf : activations)
     {
@@ -447,7 +406,7 @@ bool ItemUpdater::isLowestPriority(uint8_t value)
     return true;
 }
 
-void ItemUpdater::erase(std::string entryId)
+void ItemUpdaterUbi::erase(std::string entryId)
 {
     if (isVersionFunctional(entryId) && isChassisOn())
     {
@@ -495,7 +454,7 @@ void ItemUpdater::erase(std::string entryId)
     return;
 }
 
-void ItemUpdater::deleteAll()
+void ItemUpdaterUbi::deleteAll()
 {
     auto chassisOn = isChassisOn();
 
@@ -507,7 +466,7 @@ void ItemUpdater::deleteAll()
         }
         else
         {
-            ItemUpdater::erase(activationIt.first);
+            ItemUpdaterUbi::erase(activationIt.first);
         }
     }
 
@@ -520,7 +479,7 @@ void ItemUpdater::deleteAll()
 }
 
 // TODO: openbmc/openbmc#1402 Monitor flash usage
-void ItemUpdater::freeSpace()
+void ItemUpdaterUbi::freeSpace()
 {
     //  Versions with the highest priority in front
     std::priority_queue<std::pair<int, std::string>,
@@ -559,14 +518,14 @@ void ItemUpdater::freeSpace()
     }
 }
 
-void ItemUpdater::createActiveAssociation(const std::string& path)
+void ItemUpdaterUbi::createActiveAssociation(const std::string& path)
 {
     assocs.emplace_back(
         std::make_tuple(ACTIVE_FWD_ASSOCIATION, ACTIVE_REV_ASSOCIATION, path));
     associations(assocs);
 }
 
-void ItemUpdater::updateFunctionalAssociation(const std::string& path)
+void ItemUpdaterUbi::updateFunctionalAssociation(const std::string& path)
 {
     // remove all functional associations
     for (auto iter = assocs.begin(); iter != assocs.end();)
@@ -585,7 +544,7 @@ void ItemUpdater::updateFunctionalAssociation(const std::string& path)
     associations(assocs);
 }
 
-void ItemUpdater::removeAssociation(const std::string& path)
+void ItemUpdaterUbi::removeAssociation(const std::string& path)
 {
     for (auto iter = assocs.begin(); iter != assocs.end();)
     {
