@@ -14,7 +14,7 @@ namespace updater
  *  @details A concrete implementation for
  *  xyz.openbmc_project.Software.Activation DBus API.
  */
-class ActivationUbi : public Activation
+class ActivationStatic : public Activation
 {
   public:
     /** @brief Constructs Activation Software Manager
@@ -27,7 +27,7 @@ class ActivationUbi : public Activation
      * @param[in] activationStatus - The status of Activation
      * @param[in] assocs - Association objects
      */
-    ActivationUbi(sdbusplus::bus::bus& bus, const std::string& path,
+    ActivationStatic(sdbusplus::bus::bus& bus, const std::string& path,
                ItemUpdater& parent, const std::string& versionId,
                const std::string& extVersion,
                sdbusplus::xyz::openbmc_project::Software::server::Activation::
@@ -36,6 +36,7 @@ class ActivationUbi : public Activation
         Activation(bus, path, parent, versionId, extVersion, activationStatus, assocs)
     {
     }
+    ~ActivationStatic() = default;
 
   private:
     void unitStateChange(sdbusplus::message::message& msg) override;

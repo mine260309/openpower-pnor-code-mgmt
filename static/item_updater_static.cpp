@@ -1,6 +1,7 @@
 #include "config.h"
 
 #include "static/item_updater_static.hpp"
+#include "static/activation_static.hpp"
 
 #include "serialize.hpp"
 #include "version.hpp"
@@ -217,19 +218,19 @@ void ItemUpdaterStatic::processPNORImage()
     }
 
     // Create Activation instance for this version.
-//    activations.insert(
-//        std::make_pair(id, std::make_unique<ActivationStatic>(
-//                               bus, path, *this, id, extendedVersion,
-//                               activationState, associations)));
+    activations.insert(
+        std::make_pair(id, std::make_unique<ActivationStatic>(
+                               bus, path, *this, id, extendedVersion,
+                               activationState, associations)));
 
     // If Active, create RedundancyPriority instance for this version.
-//    if (activationState == server::Activation::Activations::Active)
-//    {
-//        // For now only one PNOR is supported with static layout
-//        activations.find(id)->second->redundancyPriority =
-//            std::make_unique<RedundancyPriority>(
-//                bus, path, *(activations.find(id)->second), 0);
-//    }
+    if (activationState == server::Activation::Activations::Active)
+    {
+        // For now only one PNOR is supported with static layout
+        activations.find(id)->second->redundancyPriority =
+            std::make_unique<RedundancyPriority>(
+                bus, path, *(activations.find(id)->second), 0);
+    }
 
     // Create Version instance for this version.
     auto versionPtr = std::make_unique<Version>(
