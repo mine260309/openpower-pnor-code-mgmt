@@ -1,10 +1,11 @@
 #include "activation_static.hpp"
+#include "pnor_utils.hpp"
 
 #include "item_updater.hpp"
 //#include "serialize.hpp"
-//
-//#include <experimental/filesystem>
-//#include <phosphor-logging/log.hpp>
+
+#include <filesystem>
+#include <phosphor-logging/log.hpp>
 //#include <sdbusplus/exception.hpp>
 
 namespace openpower
@@ -13,15 +14,55 @@ namespace software
 {
 namespace updater
 {
+namespace fs = std::filesystem;
 namespace softwareServer = sdbusplus::xyz::openbmc_project::Software::server;
+
+using namespace phosphor::logging;
+
+auto ActivationStatic::activation(Activations value) -> Activations
+{
+
+    if (value != softwareServer::Activation::Activations::Active)
+    {
+        redundancyPriority.reset(nullptr);
+    }
+
+    if (value == softwareServer::Activation::Activations::Activating)
+    {
+        parent.freeSpace();
+        startActivation();
+        return softwareServer::Activation::activation(value);
+    }
+    else
+    {
+        activationBlocksTransition.reset(nullptr);
+        activationProgress.reset(nullptr);
+    }
+
+    return softwareServer::Activation::activation(value);
+}
 
 void ActivationStatic::startActivation()
 {
-    // Since the squashfs image has not yet been loaded to pnor and the
-    // RW volumes have not yet been created, we need to start the
-    // service files for each of those actions.
+    fs::path pnorFile;
+    fs::path imagePath (IMG_DIR);
+    imagePath /= versionId;
 
-#if 0
+    for (const auto& entry : fs::directory_iterator(imagePath))
+    {
+        if (entry.path().extension() == ".pnor")
+        {
+            pnorFile = entry;
+            break;
+        }
+    }
+    if (pnorFile.empty())
+    {
+        log<level::ERR>("Unable to find pnor file",
+                        entry("DIR=%s", imagePath.c_str()));
+        return;
+    }
+
     if (!activationProgress)
     {
         activationProgress = std::make_unique<ActivationProgress>(bus, path);
@@ -33,21 +74,28 @@ void ActivationStatic::startActivation()
             std::make_unique<ActivationBlocksTransition>(bus, path);
     }
 
-    constexpr auto ubimountService = "obmc-flash-bios-ubimount@";
-    auto ubimountServiceFile =
-        std::string(ubimountService) + versionId + ".service";
+    // TOOD: this function seem able to be skipped?
+    subscribeToSystemdSignals();
+
+    log<level::INFO>("Start programming...",
+            entry("PNOR=%s", pnorFile.c_str()));
+
+    std::string pnorFileEscaped = pnorFile.string();
+    // Escape all '/' to '-'
+    std::replace(pnorFileEscaped.begin(), pnorFileEscaped.end(), '/', '-');
+
+    constexpr auto updatePNORService = "openpower-pnor-update@";
+    pnorUpdateUnit = std::string(updatePNORService) + pnorFileEscaped + ".service";
     auto method = bus.new_method_call(SYSTEMD_BUSNAME, SYSTEMD_PATH,
                                       SYSTEMD_INTERFACE, "StartUnit");
-    method.append(ubimountServiceFile, "replace");
+    method.append(pnorUpdateUnit, "replace");
     bus.call_noreply(method);
 
     activationProgress->progress(10);
-#endif
 }
 
 void ActivationStatic::unitStateChange(sdbusplus::message::message& msg)
 {
-#if 0
     uint32_t newStateID{};
     sdbusplus::message::object_path newStateObjPath;
     std::string newStateUnit{};
@@ -56,29 +104,17 @@ void ActivationStatic::unitStateChange(sdbusplus::message::message& msg)
     // Read the msg and populate each variable
     msg.read(newStateID, newStateObjPath, newStateUnit, newStateResult);
 
-    auto ubimountServiceFile =
-        "obmc-flash-bios-ubimount@" + versionId + ".service";
-
-    if (newStateUnit == ubimountServiceFile && newStateResult == "done")
+    if (newStateUnit ==  pnorUpdateUnit)
     {
-        ubiVolumesCreated = true;
-        activationProgress->progress(activationProgress->progress() + 50);
+        if (newStateResult == "done")
+        {
+            finishActivation();
+        }
+        if(newStateResult == "failed" || newStateResult == "dependency")
+        {
+            Activation::activation(softwareServer::Activation::Activations::Failed);
+        }
     }
-
-    if (ubiVolumesCreated)
-    {
-        Activation::activation(
-            softwareServer::Activation::Activations::Activating);
-    }
-
-    if ((newStateUnit == ubimountServiceFile) &&
-        (newStateResult == "failed" || newStateResult == "dependency"))
-    {
-        Activation::activation(softwareServer::Activation::Activations::Failed);
-    }
-
-    return;
-#endif
 }
 
 void ActivationStatic::finishActivation()
@@ -94,14 +130,19 @@ void ActivationStatic::finishActivation()
 
     activationProgress->progress(100);
 
-    activationBlocksTransition.reset(nullptr);
-    activationProgress.reset(nullptr);
+    activationBlocksTransition.reset();
+    activationProgress.reset();
 
     unsubscribeFromSystemdSignals();
     // Remove version object from image manager
     deleteImageManagerObject();
     // Create active association
     parent.createActiveAssociation(path);
+    // Create functional assocaition
+    parent.updateFunctionalAssociation(versionId);
+
+    Activation::activation(
+        Activation::Activations::Active);
 }
 
 } // namespace updater

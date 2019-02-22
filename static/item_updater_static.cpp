@@ -1,7 +1,8 @@
 #include "config.h"
 
-#include "static/item_updater_static.hpp"
-#include "static/activation_static.hpp"
+#include "item_updater_static.hpp"
+#include "activation_static.hpp"
+#include "pnor_utils.hpp"
 
 #include "serialize.hpp"
 #include "version.hpp"
@@ -13,45 +14,7 @@
 #include <phosphor-logging/log.hpp>
 #include <queue>
 #include <string>
-#include <sstream>
 #include <xyz/openbmc_project/Software/Version/server.hpp>
-
-namespace utils
-{
-
-template<typename... Ts>
-std::string concat_string(Ts const&... ts){
-    std::stringstream s;
-    ((s << ts << " "), ...) << std::endl;
-    return s.str();
-}
-
-// Helper function to run pflash command
-template<typename... Ts>
-std::string pflash(Ts const&... ts)
-{
-    std::array<char, 512> buffer;
-    std::string cmd = concat_string("pflash", ts ...);
-    std::stringstream result;
-    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd.c_str(), "r"), pclose);
-    if (!pipe) {
-        throw std::runtime_error("popen() failed!");
-    }
-    while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
-        result << buffer.data();
-    }
-    return result.str();
-}
-
-std::string getPNORVersion()
-{
-    // Read the VERSION partition skipping the first 4K
-    auto r = pflash("-P", "VERSION", "-r", "/dev/stderr", "--skip=4096",
-                    "2>&1 > /dev/null");
-    return r;
-}
-
-}
 
 namespace openpower
 {
@@ -167,7 +130,7 @@ void ItemUpdaterStatic::processPNORImage()
 
     if (!id.empty())
     {
-        updateFunctionalAssociation(std::string{SOFTWARE_OBJPATH} + '/' + id);
+        updateFunctionalAssociation(id);
     }
 }
 
@@ -240,28 +203,7 @@ void ItemUpdaterStatic::reset()
 
 bool ItemUpdaterStatic::isVersionFunctional(const std::string& versionId)
 {
-#if 0
-    if (!fs::exists(PNOR_RO_ACTIVE_PATH))
-    {
-        return false;
-    }
-
-    fs::path activeRO = fs::read_symlink(PNOR_RO_ACTIVE_PATH);
-
-    if (!fs::is_directory(activeRO))
-    {
-        return false;
-    }
-
-    if (activeRO.string().find(versionId) == std::string::npos)
-    {
-        return false;
-    }
-
-    // active PNOR is the version we're checking
-    return true;
-#endif
-    return true;
+    return versionId == functionalVersionId;
 }
 
 void ItemUpdaterStatic::freePriority(uint8_t value, const std::string& versionId)
@@ -301,21 +243,18 @@ bool ItemUpdaterStatic::isLowestPriority(uint8_t value)
 
 void ItemUpdaterStatic::erase(std::string entryId)
 {
-#if 0
     if (isVersionFunctional(entryId) && isChassisOn())
     {
         log<level::ERR>(("Error: Version " + entryId +
                          " is currently active and running on the host."
                          " Unable to remove.")
                             .c_str());
+        // TODO: make it return false to indicate it's not erased
         return;
     }
-    // Remove priority persistence file
-    removeFile(entryId);
 
-    // Removing read-only and read-write partitions
-    removeReadWritePartition(entryId);
-    removeReadOnlyPartition(entryId);
+    // TODO: Should we really erase the PNOR here, or just let it erased by
+    // the new activation?
 
     // Removing entry in versions map
     auto it = versions.find(entryId);
@@ -345,76 +284,26 @@ void ItemUpdaterStatic::erase(std::string entryId)
         removeAssociation(ita->second->path);
         activations.erase(entryId);
     }
-    return;
-#endif
 }
 
 void ItemUpdaterStatic::deleteAll()
 {
-#if 0
-    auto chassisOn = isChassisOn();
-
-    for (const auto& activationIt : activations)
-    {
-        if (isVersionFunctional(activationIt.first) && chassisOn)
-        {
-            continue;
-        }
-        else
-        {
-            ItemUpdaterStatic::erase(activationIt.first);
-        }
-    }
-
-    // Remove any remaining pnor-ro- or pnor-rw- volumes that do not match
-    // the current version.
-    auto method = bus.new_method_call(SYSTEMD_BUSNAME, SYSTEMD_PATH,
-                                      SYSTEMD_INTERFACE, "StartUnit");
-    method.append("obmc-flash-bios-cleanup.service", "replace");
-    bus.call_noreply(method);
-#endif
+    // TODO: This function seems not used, should we delete?
 }
 
-// TODO: openbmc/openbmc#1402 Monitor flash usage
 void ItemUpdaterStatic::freeSpace()
 {
-#if 0
-    //  Versions with the highest priority in front
-    std::priority_queue<std::pair<int, std::string>,
-                        std::vector<std::pair<int, std::string>>,
-                        std::less<std::pair<int, std::string>>>
-        versionsPQ;
-
-    std::size_t count = 0;
+    // For now assume static layout only has 1 active PNOR,
+    // so erase the active PNOR
     for (const auto& iter : activations)
     {
         if (iter.second.get()->activation() ==
             server::Activation::Activations::Active)
         {
-            count++;
-            // Don't put the functional version on the queue since we can't
-            // remove the "running" PNOR version if it allows multiple PNORs
-            // But removing functional version if there is only one PNOR.
-            if (ACTIVE_PNOR_MAX_ALLOWED > 1 &&
-                isVersionFunctional(iter.second->versionId))
-            {
-                continue;
-            }
-            versionsPQ.push(std::make_pair(
-                iter.second->redundancyPriority.get()->priority(),
-                iter.second->versionId));
+            erase(iter.second->versionId);
+            break;
         }
     }
-
-    // If the number of PNOR versions is over ACTIVE_PNOR_MAX_ALLOWED -1,
-    // remove the highest priority one(s).
-    while ((count >= ACTIVE_PNOR_MAX_ALLOWED) && (!versionsPQ.empty()))
-    {
-        erase(versionsPQ.top().second);
-        versionsPQ.pop();
-        count--;
-    }
-#endif
 }
 
 void ItemUpdaterStatic::createActiveAssociation(const std::string& path)
@@ -424,8 +313,9 @@ void ItemUpdaterStatic::createActiveAssociation(const std::string& path)
     associations(assocs);
 }
 
-void ItemUpdaterStatic::updateFunctionalAssociation(const std::string& path)
+void ItemUpdaterStatic::updateFunctionalAssociation(const std::string& id)
 {
+    std::string path = std::string{SOFTWARE_OBJPATH} + '/' + id;
     // remove all functional associations
     for (auto iter = assocs.begin(); iter != assocs.end();)
     {
@@ -441,6 +331,7 @@ void ItemUpdaterStatic::updateFunctionalAssociation(const std::string& path)
     assocs.emplace_back(std::make_tuple(FUNCTIONAL_FWD_ASSOCIATION,
                                         FUNCTIONAL_REV_ASSOCIATION, path));
     associations(assocs);
+    functionalVersionId = id;
 }
 
 void ItemUpdaterStatic::removeAssociation(const std::string& path)
@@ -457,29 +348,6 @@ void ItemUpdaterStatic::removeAssociation(const std::string& path)
             ++iter;
         }
     }
-}
-
-std::string ItemUpdater::determineId(const std::string& symlinkPath)
-{
-#if 0
-    if (!fs::exists(symlinkPath))
-    {
-        return {};
-    }
-
-    auto target = fs::canonical(symlinkPath).string();
-
-    // check to make sure the target really exists
-    if (!fs::is_regular_file(target + "/" + PNOR_TOC_FILE))
-    {
-        return {};
-    }
-    // Get the image <id> from the symlink target
-    // for example /media/ro-2a1022fe
-    static const auto PNOR_RO_PREFIX_LEN = strlen(PNOR_RO_PREFIX);
-    return target.substr(PNOR_RO_PREFIX_LEN);
-#endif
-    return "";
 }
 
 void GardReset::reset()

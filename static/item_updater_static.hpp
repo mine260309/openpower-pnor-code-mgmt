@@ -41,7 +41,7 @@ class ItemUpdaterStatic : public ItemUpdater
 
     void createActiveAssociation(const std::string& path) override;
 
-    void updateFunctionalAssociation(const std::string& path) override;
+    void updateFunctionalAssociation(const std::string& id) override;
 
     void removeAssociation(const std::string& path) override;
 
@@ -68,6 +68,9 @@ class ItemUpdaterStatic : public ItemUpdater
     /** @brief Host factory reset - clears PNOR partitions for each
      * Activation D-Bus object */
     void reset() override;
+
+    /** @brief The functional version ID */
+    std::string functionalVersionId;
 };
 
 } // namespace updater
