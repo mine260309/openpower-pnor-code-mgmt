@@ -48,12 +48,21 @@ class ItemUpdaterUbi : public ItemUpdater
     bool isVersionFunctional(const std::string& versionId) override;
 
   private:
-    /** @brief Callback function for Software.Version match.
-     *  @details Creates an Activation D-Bus object.
-     *
-     * @param[in]  msg       - Data associated with subscribed signal
-     */
-    void createActivation(sdbusplus::message::message& msg) override;
+    std::unique_ptr<Activation> createActivationObject(
+            const std::string& path,
+            const std::string& versionId,
+            const std::string& extVersion,
+            sdbusplus::xyz::openbmc_project::Software::server::Activation::Activations activationStatus,
+            AssociationList& assocs) override;
+
+    std::unique_ptr<Version> createVersionObject(
+            const std::string& objPath,
+            const std::string& versionId,
+            const std::string& versionString,
+            sdbusplus::xyz::openbmc_project::Software::server::Version::VersionPurpose versionPurpose,
+            const std::string& filePath) override;
+
+    bool validateImage(const std::string& path) override;
 
     /** @brief Host factory reset - clears PNOR partitions for each
      * Activation D-Bus object */
