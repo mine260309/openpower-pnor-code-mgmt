@@ -216,7 +216,7 @@ void ItemUpdaterUbi::processPNORImage()
                                     entry("VERSIONID=%s", id.c_str()));
                 }
                 activations.find(id)->second->redundancyPriority =
-                    std::make_unique<RedundancyPriority>(
+                    std::make_unique<RedundancyPriorityUbi>(
                         bus, path, *(activations.find(id)->second), priority);
             }
 

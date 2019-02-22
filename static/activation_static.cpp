@@ -81,6 +81,29 @@ void ActivationStatic::unitStateChange(sdbusplus::message::message& msg)
 #endif
 }
 
+void ActivationStatic::finishActivation()
+{
+    activationProgress->progress(90);
+
+    // Set Redundancy Priority before setting to Active
+    if (!redundancyPriority)
+    {
+        redundancyPriority =
+            std::make_unique<RedundancyPriority>(bus, path, *this, 0);
+    }
+
+    activationProgress->progress(100);
+
+    activationBlocksTransition.reset(nullptr);
+    activationProgress.reset(nullptr);
+
+    unsubscribeFromSystemdSignals();
+    // Remove version object from image manager
+    deleteImageManagerObject();
+    // Create active association
+    parent.createActiveAssociation(path);
+}
+
 } // namespace updater
 } // namespace software
 } // namespace openpower

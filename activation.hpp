@@ -203,6 +203,7 @@ class Activation : public ActivationInherit
         // Emit deferred signal.
         emit_object_added();
     }
+    virtual ~Activation() = default;
 
     /** @brief Activation property get function
      *
@@ -269,10 +270,6 @@ class Activation : public ActivationInherit
     /** @brief Used to subscribe to dbus systemd signals **/
     sdbusplus::bus::match_t systemdSignals;
 
-    /** @brief Tracks whether the read-only & read-write volumes have been
-     *created as part of the activation process. **/
-    bool ubiVolumesCreated = false;
-
     /** @brief activation status property get function
      *
      * @returns Activations - The activation value
@@ -300,7 +297,7 @@ class Activation : public ActivationInherit
     virtual void startActivation() = 0;
 
     /** @brief Member function for clarity & brevity at activation end */
-    void finishActivation();
+    virtual void finishActivation() = 0;
 
 #ifdef WANT_SIGNATURE_VERIFY
     /**

@@ -41,6 +41,7 @@ class ActivationStatic : public Activation
   private:
     void unitStateChange(sdbusplus::message::message& msg) override;
     void startActivation() override;
+    void finishActivation() override;
 };
 
 } // namespace updater

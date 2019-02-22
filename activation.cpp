@@ -78,101 +78,14 @@ void Activation::unsubscribeFromSystemdSignals()
     return;
 }
 
-void Activation::finishActivation()
-{
-    activationProgress->progress(90);
-
-    // Set Redundancy Priority before setting to Active
-    if (!redundancyPriority)
-    {
-        redundancyPriority =
-            std::make_unique<RedundancyPriority>(bus, path, *this, 0);
-    }
-
-    activationProgress->progress(100);
-
-    activationBlocksTransition.reset(nullptr);
-    activationProgress.reset(nullptr);
-
-    ubiVolumesCreated = false;
-    Activation::unsubscribeFromSystemdSignals();
-    // Remove version object from image manager
-    Activation::deleteImageManagerObject();
-    // Create active association
-    parent.createActiveAssociation(path);
-}
-
 auto Activation::activation(Activations value) -> Activations
 {
-
-    if (value != softwareServer::Activation::Activations::Active)
-    {
-        redundancyPriority.reset(nullptr);
-    }
-
-    if (value == softwareServer::Activation::Activations::Activating)
-    {
-        parent.freeSpace();
-        softwareServer::Activation::activation(value);
-
-        if (ubiVolumesCreated == false)
-        {
-            // Enable systemd signals
-            Activation::subscribeToSystemdSignals();
-
-#ifdef WANT_SIGNATURE_VERIFY
-            // Validate the signed image.
-            if (!validateSignature())
-            {
-                // Cleanup
-                activationBlocksTransition.reset(nullptr);
-                activationProgress.reset(nullptr);
-
-                return softwareServer::Activation::activation(
-                    softwareServer::Activation::Activations::Failed);
-            }
-#endif
-            startActivation();
-            return softwareServer::Activation::activation(value);
-        }
-        else if (ubiVolumesCreated == true)
-        {
-            // Only when the squashfs image is finished loading AND the RW
-            // volumes have been created do we proceed with activation. To
-            // verify that this happened, we check for the mount dirs PNOR_PRSV
-            // and PNOR_RW_PREFIX_<versionid>, as well as the image dir R0.
-
-            if ((fs::is_directory(PNOR_PRSV)) &&
-                (fs::is_directory(PNOR_RW_PREFIX + versionId)) &&
-                (fs::is_directory(PNOR_RO_PREFIX + versionId)))
-            {
-                Activation::finishActivation();
-                return softwareServer::Activation::activation(
-                    softwareServer::Activation::Activations::Active);
-            }
-            else
-            {
-                activationBlocksTransition.reset(nullptr);
-                activationProgress.reset(nullptr);
-                return softwareServer::Activation::activation(
-                    softwareServer::Activation::Activations::Failed);
-            }
-        }
-    }
-    else
-    {
-        activationBlocksTransition.reset(nullptr);
-        activationProgress.reset(nullptr);
-    }
-
     return softwareServer::Activation::activation(value);
 }
 
 auto Activation::requestedActivation(RequestedActivations value)
     -> RequestedActivations
 {
-    ubiVolumesCreated = false;
-
     if ((value == softwareServer::Activation::RequestedActivations::Active) &&
         (softwareServer::Activation::requestedActivation() !=
          softwareServer::Activation::RequestedActivations::Active))
@@ -266,7 +179,6 @@ void Activation::deleteImageManagerObject()
 uint8_t RedundancyPriority::priority(uint8_t value)
 {
     parent.parent.freePriority(value, parent.versionId);
-    storeToFile(parent.versionId, value);
     return softwareServer::RedundancyPriority::priority(value);
 }
 
