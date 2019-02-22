@@ -2,10 +2,10 @@
 
 #ifdef UBIFS_LAYOUT
 #include "ubi/item_updater_ubi.hpp"
+#include "ubi/watch.hpp"
 #else
 #include "static/item_updater_static.hpp"
 #endif
-#include "watch.hpp"
 
 #include <phosphor-logging/log.hpp>
 #include <sdbusplus/bus.hpp>
@@ -39,10 +39,12 @@ int main(int argc, char* argv[])
     bus.request_name(BUSNAME_UPDATER);
     try
     {
+#ifdef UBIFS_LAYOUT
         openpower::software::updater::Watch watch(
             loop,
             std::bind(std::mem_fn(&ItemUpdater::updateFunctionalAssociation),
                       &updater, std::placeholders::_1));
+#endif
         bus.attach_event(loop, SD_EVENT_PRIORITY_NORMAL);
         auto rc = sd_event_loop(loop);
         if (rc < 0)
