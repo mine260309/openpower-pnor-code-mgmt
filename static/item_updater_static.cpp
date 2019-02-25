@@ -14,6 +14,7 @@
 #include <phosphor-logging/log.hpp>
 #include <queue>
 #include <string>
+#include <tuple>
 #include <xyz/openbmc_project/Software/Version/server.hpp>
 
 namespace openpower
@@ -29,6 +30,7 @@ namespace fs = std::experimental::filesystem;
 
 using namespace sdbusplus::xyz::openbmc_project::Common::Error;
 using namespace phosphor::logging;
+using sdbusplus::exception::SdBusError;
 
 // TODO: Change paths once openbmc/openbmc#1663 is completed.
 constexpr auto MBOXD_INTERFACE = "org.openbmc.mboxd";
@@ -69,7 +71,6 @@ bool ItemUpdaterStatic::validateImage(const std::string& path)
 
 void ItemUpdaterStatic::processPNORImage()
 {
-    // TODO: use pflash to extract PNOR version and calcuate version id
     auto fullVersion = utils::getPNORVersion();
 
     const auto& [version, extendedVersion] = Version::getVersions(fullVersion);
@@ -208,20 +209,7 @@ bool ItemUpdaterStatic::isVersionFunctional(const std::string& versionId)
 
 void ItemUpdaterStatic::freePriority(uint8_t value, const std::string& versionId)
 {
-#if 0
-    // TODO openbmc/openbmc#1896 Improve the performance of this function
-    for (const auto& intf : activations)
-    {
-        if (intf.second->redundancyPriority)
-        {
-            if (intf.second->redundancyPriority.get()->priority() == value &&
-                intf.second->versionId != versionId)
-            {
-                intf.second->redundancyPriority.get()->priority(value + 1);
-            }
-        }
-    }
-#endif
+    // No need to support priorty for now
 }
 
 void ItemUpdaterStatic::erase(std::string entryId)
@@ -335,45 +323,54 @@ void ItemUpdaterStatic::removeAssociation(const std::string& path)
 
 void GardReset::reset()
 {
-#if 0
-    // The GARD partition is currently misspelled "GUARD." This file path will
-    // need to be updated in the future.
-    auto path = fs::path(PNOR_PRSV_ACTIVE_PATH);
-    path /= "GUARD";
+    // Clear gard partition
     std::vector<uint8_t> mboxdArgs;
+    int rc;
 
     auto dbusCall = bus.new_method_call(MBOXD_INTERFACE, MBOXD_PATH,
                                         MBOXD_INTERFACE, "cmd");
-
     // Suspend mboxd - no args required.
     dbusCall.append(static_cast<uint8_t>(3), mboxdArgs);
 
-    auto responseMsg = bus.call(dbusCall);
-    if (responseMsg.is_method_error())
+    try
     {
-        log<level::ERR>("Error in mboxd suspend call");
+        bus.call_noreply(dbusCall);
+    }
+    catch (const SdBusError& e)
+    {
+        log<level::ERR>("Error in mboxd suspend call",
+                entry("ERROR=%s", e.what()));
         elog<InternalFailure>();
     }
 
-    if (fs::is_regular_file(path))
+    // Clear guard partition
+    std::tie(rc, std::ignore) = utils::pflash("-P GUARD -c -f >/dev/null");
+    if (rc != 0)
     {
-        fs::remove(path);
+        log<level::ERR>("Failed to clear GUARD",
+                entry("RETURNCODE=%d", rc));
+    }
+    else
+    {
+        log<level::INFO>("Clear GUARD successfully");
     }
 
     dbusCall = bus.new_method_call(MBOXD_INTERFACE, MBOXD_PATH, MBOXD_INTERFACE,
                                    "cmd");
-
     // Resume mboxd with arg 1, indicating that the flash is modified.
     mboxdArgs.push_back(1);
     dbusCall.append(static_cast<uint8_t>(4), mboxdArgs);
 
-    responseMsg = bus.call(dbusCall);
-    if (responseMsg.is_method_error())
+    try
     {
-        log<level::ERR>("Error in mboxd resume call");
+        bus.call_noreply(dbusCall);
+    }
+    catch (const SdBusError& e)
+    {
+        log<level::ERR>("Error in mboxd resume call",
+                entry("ERROR=%s", e.what()));
         elog<InternalFailure>();
     }
-#endif
 }
 
 } // namespace updater
