@@ -159,7 +159,7 @@ class ItemUpdater : public ItemUpdaterInherit
      *
      * @param[in]  path - The path to update the association to.
      */
-    virtual void updateFunctionalAssociation(const std::string& path) = 0;
+    virtual void updateFunctionalAssociation(const std::string& id) = 0;
 
     /** @brief Removes the associations from the provided software image path
      *

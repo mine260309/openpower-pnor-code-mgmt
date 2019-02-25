@@ -41,7 +41,7 @@ class ItemUpdaterUbi : public ItemUpdater
 
     void createActiveAssociation(const std::string& path) override;
 
-    void updateFunctionalAssociation(const std::string& path) override;
+    void updateFunctionalAssociation(const std::string& id) override;
 
     void removeAssociation(const std::string& path) override;
 

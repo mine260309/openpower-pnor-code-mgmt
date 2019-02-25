@@ -172,7 +172,7 @@ void ItemUpdaterUbi::processPNORImage()
     auto id = determineId(PNOR_RO_ACTIVE_PATH);
     if (!id.empty())
     {
-        updateFunctionalAssociation(std::string{SOFTWARE_OBJPATH} + '/' + id);
+        updateFunctionalAssociation(id);
     }
     return;
 }
@@ -451,8 +451,9 @@ void ItemUpdaterUbi::createActiveAssociation(const std::string& path)
     associations(assocs);
 }
 
-void ItemUpdaterUbi::updateFunctionalAssociation(const std::string& path)
+void ItemUpdaterUbi::updateFunctionalAssociation(const std::string& id)
 {
+    std::string path = std::string{SOFTWARE_OBJPATH} + '/' + id;
     // remove all functional associations
     for (auto iter = assocs.begin(); iter != assocs.end();)
     {
