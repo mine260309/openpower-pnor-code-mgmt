@@ -8,6 +8,7 @@
 #include "version.hpp"
 #include "xyz/openbmc_project/Common/error.hpp"
 
+#include <array>
 #include <experimental/filesystem>
 #include <fstream>
 #include <phosphor-logging/elog-errors.hpp>
@@ -137,69 +138,62 @@ void ItemUpdaterStatic::processPNORImage()
 
 void ItemUpdaterStatic::reset()
 {
-#if 0
+    // The pair contains the partition name and if it should use ECC clear
+    using PartClear = std::pair<const char*, bool>;
+    constexpr std::array<PartClear, 11> partitions = {
+        {
+        {"HBEL", true},
+        {"GUARD", true},
+        {"NVRAM", false},
+        {"DJVPD", true},
+        {"MVPD", true},
+        {"CVPD", true},
+        {"FIRDATA", true},
+        {"BMC_INV", false},
+        {"ATTR_TMP", false},
+        {"ATTR_PERM", true},
+        {"HB_VOLATILE", true},
+        }};
+
     std::vector<uint8_t> mboxdArgs;
 
     // Suspend mboxd - no args required.
     auto dbusCall = bus.new_method_call(MBOXD_INTERFACE, MBOXD_PATH,
                                         MBOXD_INTERFACE, "cmd");
-
     dbusCall.append(static_cast<uint8_t>(3), mboxdArgs);
 
-    auto responseMsg = bus.call(dbusCall);
-    if (responseMsg.is_method_error())
+    try
     {
-        log<level::ERR>("Error in mboxd suspend call");
+        bus.call_noreply(dbusCall);
+    }
+    catch (const SdBusError& e)
+    {
+        log<level::ERR>("Error in mboxd suspend call",
+                entry("ERROR=%s", e.what()));
         elog<InternalFailure>();
     }
-
-    constexpr static auto patchDir = "/usr/local/share/pnor";
-    if (fs::is_directory(patchDir))
+    // TODO: clear partitions that should be cleared during factory reset
+    for (auto p: partitions)
     {
-        for (const auto& iter : fs::directory_iterator(patchDir))
-        {
-            fs::remove_all(iter);
-        }
-    }
-
-    // Clear the read-write partitions.
-    for (const auto& it : activations)
-    {
-        auto rwDir = PNOR_RW_PREFIX + it.first;
-        if (fs::is_directory(rwDir))
-        {
-            for (const auto& iter : fs::directory_iterator(rwDir))
-            {
-                fs::remove_all(iter);
-            }
-        }
-    }
-
-    // Clear the preserved partition.
-    if (fs::is_directory(PNOR_PRSV))
-    {
-        for (const auto& iter : fs::directory_iterator(PNOR_PRSV))
-        {
-            fs::remove_all(iter);
-        }
+        utils::pnorClear(p.first, p.second);
     }
 
     // Resume mboxd with arg 1, indicating that the flash was modified.
     dbusCall = bus.new_method_call(MBOXD_INTERFACE, MBOXD_PATH, MBOXD_INTERFACE,
                                    "cmd");
-
     mboxdArgs.push_back(1);
     dbusCall.append(static_cast<uint8_t>(4), mboxdArgs);
 
-    responseMsg = bus.call(dbusCall);
-    if (responseMsg.is_method_error())
+    try
     {
-        log<level::ERR>("Error in mboxd resume call");
+        bus.call_noreply(dbusCall);
+    }
+    catch (const SdBusError& e)
+    {
+        log<level::ERR>("Error in mboxd resume call",
+                entry("ERROR=%s", e.what()));
         elog<InternalFailure>();
     }
-
-    return;
-#endif
 }
 
 bool ItemUpdaterStatic::isVersionFunctional(const std::string& versionId)
@@ -325,7 +319,6 @@ void GardReset::reset()
 {
     // Clear gard partition
     std::vector<uint8_t> mboxdArgs;
-    int rc;
 
     auto dbusCall = bus.new_method_call(MBOXD_INTERFACE, MBOXD_PATH,
                                         MBOXD_INTERFACE, "cmd");
@@ -344,16 +337,7 @@ void GardReset::reset()
     }
 
     // Clear guard partition
-    std::tie(rc, std::ignore) = utils::pflash("-P GUARD -c -f >/dev/null");
-    if (rc != 0)
-    {
-        log<level::ERR>("Failed to clear GUARD",
-                entry("RETURNCODE=%d", rc));
-    }
-    else
-    {
-        log<level::INFO>("Clear GUARD successfully");
-    }
+    utils::pnorClear("GUARD");
 
     dbusCall = bus.new_method_call(MBOXD_INTERFACE, MBOXD_PATH, MBOXD_INTERFACE,
                                    "cmd");
