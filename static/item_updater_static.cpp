@@ -224,23 +224,6 @@ void ItemUpdaterStatic::freePriority(uint8_t value, const std::string& versionId
 #endif
 }
 
-bool ItemUpdaterStatic::isLowestPriority(uint8_t value)
-{
-#if 0
-    for (const auto& intf : activations)
-    {
-        if (intf.second->redundancyPriority)
-        {
-            if (intf.second->redundancyPriority.get()->priority() < value)
-            {
-                return false;
-            }
-        }
-    }
-#endif
-    return true;
-}
-
 void ItemUpdaterStatic::erase(std::string entryId)
 {
     if (isVersionFunctional(entryId) && isChassisOn())
