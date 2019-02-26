@@ -317,16 +317,13 @@ void ItemUpdaterUbi::freePriority(uint8_t value, const std::string& versionId)
     }
 }
 
-void ItemUpdaterUbi::erase(std::string entryId)
+bool ItemUpdaterUbi::erase(std::string entryId)
 {
-    if (isVersionFunctional(entryId) && isChassisOn())
+    if (!ItemUpdater::erase(entryId))
     {
-        log<level::ERR>(("Error: Version " + entryId +
-                         " is currently active and running on the host."
-                         " Unable to remove.")
-                            .c_str());
-        return;
+        return false;
     }
+
     // Remove priority persistence file
     removeFile(entryId);
 
@@ -334,35 +331,7 @@ void ItemUpdaterUbi::erase(std::string entryId)
     removeReadWritePartition(entryId);
     removeReadOnlyPartition(entryId);
 
-    // Removing entry in versions map
-    auto it = versions.find(entryId);
-    if (it == versions.end())
-    {
-        log<level::ERR>(("Error: Failed to find version " + entryId +
-                         " in item updater versions map."
-                         " Unable to remove.")
-                            .c_str());
-    }
-    else
-    {
-        versions.erase(entryId);
-    }
-
-    // Removing entry in activations map
-    auto ita = activations.find(entryId);
-    if (ita == activations.end())
-    {
-        log<level::ERR>(("Error: Failed to find version " + entryId +
-                         " in item updater activations map."
-                         " Unable to remove.")
-                            .c_str());
-    }
-    else
-    {
-        removeAssociation(ita->second->path);
-        activations.erase(entryId);
-    }
-    return;
+    return true;
 }
 
 void ItemUpdaterUbi::deleteAll()

@@ -31,7 +31,7 @@ class ItemUpdaterUbi : public ItemUpdater
 
     void processPNORImage() override;
 
-    void erase(std::string entryId) override;
+    bool erase(std::string entryId) override;
 
     void deleteAll() override;
 

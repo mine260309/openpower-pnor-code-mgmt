@@ -206,51 +206,6 @@ void ItemUpdaterStatic::freePriority(uint8_t value, const std::string& versionId
     // No need to support priorty for now
 }
 
-void ItemUpdaterStatic::erase(std::string entryId)
-{
-    if (isVersionFunctional(entryId) && isChassisOn())
-    {
-        log<level::ERR>(("Error: Version " + entryId +
-                         " is currently active and running on the host."
-                         " Unable to remove.")
-                            .c_str());
-        // TODO: make it return false to indicate it's not erased
-        return;
-    }
-
-    // TODO: Should we really erase the PNOR here, or just let it erased by
-    // the new activation?
-
-    // Removing entry in versions map
-    auto it = versions.find(entryId);
-    if (it == versions.end())
-    {
-        log<level::ERR>(("Error: Failed to find version " + entryId +
-                         " in item updater versions map."
-                         " Unable to remove.")
-                            .c_str());
-    }
-    else
-    {
-        versions.erase(entryId);
-    }
-
-    // Removing entry in activations map
-    auto ita = activations.find(entryId);
-    if (ita == activations.end())
-    {
-        log<level::ERR>(("Error: Failed to find version " + entryId +
-                         " in item updater activations map."
-                         " Unable to remove.")
-                            .c_str());
-    }
-    else
-    {
-        removeAssociation(ita->second->path);
-        activations.erase(entryId);
-    }
-}
-
 void ItemUpdaterStatic::deleteAll()
 {
     // TODO: This function seems not used, should we delete?

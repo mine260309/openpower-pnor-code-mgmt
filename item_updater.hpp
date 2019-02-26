@@ -112,9 +112,9 @@ class ItemUpdater : public ItemUpdaterInherit
      *
      *  @param[in] entryId - Id of the version to delete
      *
-     *  @return None
+     *  @return - Returns true if the version is deleted.
      */
-    virtual void erase(std::string entryId) = 0;
+    virtual bool erase(std::string entryId);
 
     /**
      * @brief Erases any non-active pnor versions.

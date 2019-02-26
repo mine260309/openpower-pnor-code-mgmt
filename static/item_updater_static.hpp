@@ -31,8 +31,6 @@ class ItemUpdaterStatic : public ItemUpdater
 
     void processPNORImage() override;
 
-    void erase(std::string entryId) override;
-
     void deleteAll() override;
 
     void freeSpace() override;

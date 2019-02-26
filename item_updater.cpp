@@ -165,6 +165,48 @@ void ItemUpdater::removeAssociation(const std::string& path)
     }
 }
 
+bool ItemUpdater::erase(std::string entryId)
+{
+    if (isVersionFunctional(entryId) && isChassisOn())
+    {
+        log<level::ERR>(("Error: Version " + entryId +
+                         " is currently active and running on the host."
+                         " Unable to remove.")
+                            .c_str());
+        return false;
+    }
+
+    // Removing entry in versions map
+    auto it = versions.find(entryId);
+    if (it == versions.end())
+    {
+        log<level::ERR>(("Error: Failed to find version " + entryId +
+                         " in item updater versions map."
+                         " Unable to remove.")
+                            .c_str());
+    }
+    else
+    {
+        versions.erase(entryId);
+    }
+
+    // Removing entry in activations map
+    auto ita = activations.find(entryId);
+    if (ita == activations.end())
+    {
+        log<level::ERR>(("Error: Failed to find version " + entryId +
+                         " in item updater activations map."
+                         " Unable to remove.")
+                            .c_str());
+    }
+    else
+    {
+        removeAssociation(ita->second->path);
+        activations.erase(entryId);
+    }
+    return true;
+}
+
 bool ItemUpdater::isChassisOn()
 {
     auto mapperCall = bus.new_method_call(MAPPER_BUSNAME, MAPPER_PATH,
