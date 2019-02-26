@@ -472,7 +472,7 @@ void ItemUpdaterUbi::removeAssociation(const std::string& path)
     }
 }
 
-std::string ItemUpdater::determineId(const std::string& symlinkPath)
+std::string ItemUpdaterUbi::determineId(const std::string& symlinkPath)
 {
     if (!fs::exists(symlinkPath))
     {
