@@ -429,49 +429,6 @@ void ItemUpdaterUbi::freeSpace()
     }
 }
 
-void ItemUpdaterUbi::createActiveAssociation(const std::string& path)
-{
-    assocs.emplace_back(
-        std::make_tuple(ACTIVE_FWD_ASSOCIATION, ACTIVE_REV_ASSOCIATION, path));
-    associations(assocs);
-}
-
-void ItemUpdaterUbi::updateFunctionalAssociation(const std::string& id)
-{
-    std::string path = std::string{SOFTWARE_OBJPATH} + '/' + id;
-    // remove all functional associations
-    for (auto iter = assocs.begin(); iter != assocs.end();)
-    {
-        if ((std::get<0>(*iter)).compare(FUNCTIONAL_FWD_ASSOCIATION) == 0)
-        {
-            iter = assocs.erase(iter);
-        }
-        else
-        {
-            ++iter;
-        }
-    }
-    assocs.emplace_back(std::make_tuple(FUNCTIONAL_FWD_ASSOCIATION,
-                                        FUNCTIONAL_REV_ASSOCIATION, path));
-    associations(assocs);
-}
-
-void ItemUpdaterUbi::removeAssociation(const std::string& path)
-{
-    for (auto iter = assocs.begin(); iter != assocs.end();)
-    {
-        if ((std::get<2>(*iter)).compare(path) == 0)
-        {
-            iter = assocs.erase(iter);
-            associations(assocs);
-        }
-        else
-        {
-            ++iter;
-        }
-    }
-}
-
 std::string ItemUpdaterUbi::determineId(const std::string& symlinkPath)
 {
     if (!fs::exists(symlinkPath))

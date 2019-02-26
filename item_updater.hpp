@@ -135,20 +135,20 @@ class ItemUpdater : public ItemUpdaterInherit
      *
      * @param[in]  path - The path to create the association to.
      */
-    virtual void createActiveAssociation(const std::string& path) = 0;
+    virtual void createActiveAssociation(const std::string& path);
 
     /** @brief Updates the functional association to the
      *  new "running" PNOR image
      *
      * @param[in]  path - The path to update the association to.
      */
-    virtual void updateFunctionalAssociation(const std::string& id) = 0;
+    virtual void updateFunctionalAssociation(const std::string& id);
 
     /** @brief Removes the associations from the provided software image path
      *
      * @param[in]  path - The path to remove the association from.
      */
-    virtual void removeAssociation(const std::string& path) = 0;
+    virtual void removeAssociation(const std::string& path);
 
     /** @brief Persistent GardReset dbus object */
     std::unique_ptr<GardReset> gardReset;

@@ -271,48 +271,10 @@ void ItemUpdaterStatic::freeSpace()
     }
 }
 
-void ItemUpdaterStatic::createActiveAssociation(const std::string& path)
-{
-    assocs.emplace_back(
-        std::make_tuple(ACTIVE_FWD_ASSOCIATION, ACTIVE_REV_ASSOCIATION, path));
-    associations(assocs);
-}
-
 void ItemUpdaterStatic::updateFunctionalAssociation(const std::string& id)
 {
-    std::string path = std::string{SOFTWARE_OBJPATH} + '/' + id;
-    // remove all functional associations
-    for (auto iter = assocs.begin(); iter != assocs.end();)
-    {
-        if ((std::get<0>(*iter)).compare(FUNCTIONAL_FWD_ASSOCIATION) == 0)
-        {
-            iter = assocs.erase(iter);
-        }
-        else
-        {
-            ++iter;
-        }
-    }
-    assocs.emplace_back(std::make_tuple(FUNCTIONAL_FWD_ASSOCIATION,
-                                        FUNCTIONAL_REV_ASSOCIATION, path));
-    associations(assocs);
     functionalVersionId = id;
-}
-
-void ItemUpdaterStatic::removeAssociation(const std::string& path)
-{
-    for (auto iter = assocs.begin(); iter != assocs.end();)
-    {
-        if ((std::get<2>(*iter)).compare(path) == 0)
-        {
-            iter = assocs.erase(iter);
-            associations(assocs);
-        }
-        else
-        {
-            ++iter;
-        }
-    }
+    ItemUpdater::updateFunctionalAssociation(id);
 }
 
 void GardReset::reset()

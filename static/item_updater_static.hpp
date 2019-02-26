@@ -37,11 +37,7 @@ class ItemUpdaterStatic : public ItemUpdater
 
     void freeSpace() override;
 
-    void createActiveAssociation(const std::string& path) override;
-
     void updateFunctionalAssociation(const std::string& id) override;
-
-    void removeAssociation(const std::string& path) override;
 
     bool isVersionFunctional(const std::string& versionId) override;
 
